@@ -155,6 +155,15 @@ def show_config(  # noqa: PLR0912, C901
 
 def main() -> None:
     """Entrypoint for application."""
+    st.set_page_config(
+        page_title="LR Viz",
+        page_icon=":material/schedule:",
+        layout="wide",
+        menu_items={
+            "Report a bug": "https://www.github.com/siemdejong/lr-schedulers/issues",
+        }
+    )
+
     st.title("Visualize Learning Rate Schedulers")
 
     torch_optim_lr_scheduler_members = sorted(
