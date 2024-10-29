@@ -27,6 +27,7 @@ st.set_page_config(
 st.title("Visualize Learning Rate Schedulers")
 
 STEPS = st.number_input("Number of steps", value=100, min_value=0, max_value=1000)
+LR = st.number_input("Learning rate", value=0.1)
 
 DEFAULTS = {
     "CosineAnnealingLR": {"T_max": STEPS},
@@ -50,7 +51,7 @@ def plot_schedule(
     parameters: dict,
 ) -> go.Figure:
     """Plot the learning rate schedule for a given scheduler."""
-    optimizer = SGD([torch.tensor(1)], lr=1)
+    optimizer = SGD([torch.tensor(1)], lr=LR)
     # Use a scheduler of your choice below.
     # Great for debugging your own schedulers!
     if inspect.signature(scheduler_cls).parameters.get("total_iters"):
