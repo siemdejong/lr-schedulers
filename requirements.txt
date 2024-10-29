@@ -122,6 +122,7 @@ tenacity==9.0.0
     #   streamlit
 toml==0.10.2
     # via streamlit
+-i https://download.pytorch.org/whl/cpu
 torch==2.5.1+cpu
     # via lr-scheduler-viz (pyproject.toml)
 tornado==6.4.1
