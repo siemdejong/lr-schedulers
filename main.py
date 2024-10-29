@@ -71,7 +71,7 @@ def plot_schedule(
     return fig
 
 
-def show_config(  # noqa: PLR0912, C901
+def show_config(  # noqa: PLR0912, C901, PLR0915
     scheduler_name: str,
     scheduler_cls: torch.optim.lr_scheduler.LRScheduler,
     st_container: st.container = st.container,
@@ -165,7 +165,7 @@ def main() -> None:
         layout="wide",
         menu_items={
             "Report a bug": "https://www.github.com/siemdejong/lr-schedulers/issues",
-        }
+        },
     )
 
     st.title("Visualize Learning Rate Schedulers")
