@@ -26,8 +26,12 @@ st.set_page_config(
 
 st.title("Visualize Learning Rate Schedulers")
 
-STEPS = st.number_input("Number of steps", value=100, min_value=0, max_value=1000)
-LR = st.number_input("Learning rate", value=0.1)
+left, right = st.columns([0.5, 0.5])
+with left:
+    STEPS = st.number_input("Number of steps", value=100, min_value=0, max_value=1000)
+with right:
+    LR = st.number_input("Learning rate", value=0.1)
+st.divider()
 
 DEFAULTS = {
     "CosineAnnealingLR": {"T_max": STEPS},
