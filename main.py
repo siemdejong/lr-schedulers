@@ -54,7 +54,7 @@ def plot_schedule(
     for parameter in defaults:
         if "lambda" in str(defaults[parameter]):
             st.write(f"Converting {defaults[parameter]} to function")
-            defaults[parameter] = ast.literal_eval(defaults[parameter])
+            defaults[parameter] = eval(defaults[parameter])  # noqa: S307
 
     scheduler_kwargs = defaults | total_iters_scheduler_kwargs
     scheduler = scheduler_cls(optimizer, **scheduler_kwargs)
@@ -74,11 +74,15 @@ def plot_schedule(
 def show_config(  # noqa: PLR0912, C901
     scheduler_name: str,
     scheduler_cls: torch.optim.lr_scheduler.LRScheduler,
+    st_container: st.container = st.container,
 ) -> int | float | bool | Iterable | Callable | str:
     """Show configuration options for a given scheduler."""
     signature = inspect.signature(scheduler_cls)
     selected_inputs = {}
-    for parameter_name in signature.parameters:
+
+    left_column, _, right_column = st_container.columns([0.48, 0.04, 0.48])
+
+    for col_idx, parameter_name in enumerate(signature.parameters):
         if parameter_name in ["optimizer", "last_epoch", "verbose", "total_iters"]:
             continue
 
@@ -113,41 +117,41 @@ def show_config(  # noqa: PLR0912, C901
         if default in [inspect.Signature.empty, None]:
             defaults = DEFAULTS.get(scheduler_name)
             default = defaults.get(str(parameter.name)) if defaults else None
-
-        if annotation in (int, float):
-            selected_input = st.slider(
-                f"{parameter_name}",
-                value=default,
-                key=f"{scheduler_name}-{parameter_name}",
-            )
-        elif type(annotation) is tuple:
-            selected_input = st.radio(
-                f"{parameter_name}",
-                options=annotation,
-                index=annotation.index(default),
-                key=f"{scheduler_name}-{parameter_name}",
-            )
-        elif annotation is bool:
-            selected_input = st.toggle(
-                f"{parameter_name}",
-                value=default,
-                key=f"{scheduler_name}-{parameter_name}",
-            )
-        elif annotation is Iterable:
-            selected_input = st.text_input(
-                f"{parameter_name}",
-                key=f"{scheduler_name}-{parameter_name}",
-                value=default,
-            )
-            selected_input = ast.literal_eval(selected_input)
-        elif annotation is Callable or type(annotation) is _CallableGenericAlias:
-            selected_input = st.text_input(f"{parameter_name}", value=default)
-        else:
-            selected_input = st.text_input(
-                f"{parameter_name} (not recognized)",
-                disabled=True,
-                value=default,
-            )
+        with left_column if col_idx % 2 == 0 else right_column:
+            if annotation in (int, float):
+                selected_input = st.slider(
+                    f"{parameter_name}",
+                    value=default,
+                    key=f"{scheduler_name}-{parameter_name}",
+                )
+            elif type(annotation) is tuple:
+                selected_input = st.radio(
+                    f"{parameter_name}",
+                    options=annotation,
+                    index=annotation.index(default),
+                    key=f"{scheduler_name}-{parameter_name}",
+                )
+            elif annotation is bool:
+                selected_input = st.toggle(
+                    f"{parameter_name}",
+                    value=default,
+                    key=f"{scheduler_name}-{parameter_name}",
+                )
+            elif annotation is Iterable:
+                selected_input = st.text_input(
+                    f"{parameter_name}",
+                    key=f"{scheduler_name}-{parameter_name}",
+                    value=default,
+                )
+                selected_input = ast.literal_eval(selected_input)
+            elif annotation is Callable or type(annotation) is _CallableGenericAlias:
+                selected_input = st.text_input(f"{parameter_name}", value=default)
+            else:
+                selected_input = st.text_input(
+                    f"{parameter_name} (not recognized)",
+                    disabled=True,
+                    value=default,
+                )
         selected_inputs[parameter_name] = selected_input
 
     return selected_inputs
@@ -181,10 +185,9 @@ def main() -> None:
             "SequentialLR",
             "ReduceLROnPlateau",
         ]:
-            plot_col, config_col = st.columns([0.7, 0.3])
+            plot_col, config_col = st.columns([0.6, 0.4])
 
-            with config_col:
-                parameters = show_config(member_name, member_cls)
+            parameters = show_config(member_name, member_cls, config_col)
 
             with plot_col:
                 fig = plot_schedule(member_name, member_cls, parameters)
