@@ -11,6 +11,11 @@ dependencies = [
     "torch>=2.5.0",
 ]
 
+[tool.uv]
+dev-dependencies = [
+    "ruff>=0.7.1",
+]
+
 [tool.uv.sources]
 torch = { index = "pytorch" }
 
@@ -18,3 +23,7 @@ torch = { index = "pytorch" }
 name = "pytorch"
 url = "https://download.pytorch.org/whl/cpu"
 explicit = true
+
+[tool.ruff.lint]
+select = ["ALL"]
+extend-ignore = ["D203", "D213", "COM812", "ISC001"]
