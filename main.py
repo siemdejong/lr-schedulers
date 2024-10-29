@@ -14,7 +14,19 @@ import streamlit as st
 import torch
 from torch.optim import SGD
 
-STEPS = 100
+st.set_page_config(
+    page_title="LR Viz",
+    page_icon=":material/schedule:",
+    layout="wide",
+    menu_items={
+        "Report a bug": "https://www.github.com/siemdejong/lr-schedulers/issues",
+    },
+)
+
+
+st.title("Visualize Learning Rate Schedulers")
+
+STEPS = st.number_input("Number of steps", value=100, min_value=0, max_value=1000)
 
 DEFAULTS = {
     "CosineAnnealingLR": {"T_max": STEPS},
@@ -48,12 +60,11 @@ def plot_schedule(
     else:
         total_iters_scheduler_kwargs = {}
 
-    defaults = DEFAULTS.get(scheduler_name, {}) | parameters
+    defaults = parameters | DEFAULTS.get(scheduler_name, {})
 
     # Convert lambdas strings to functions
     for parameter in defaults:
         if "lambda" in str(defaults[parameter]):
-            st.write(f"Converting {defaults[parameter]} to function")
             defaults[parameter] = eval(defaults[parameter])  # noqa: S307
 
     scheduler_kwargs = defaults | total_iters_scheduler_kwargs
@@ -68,6 +79,7 @@ def plot_schedule(
 
     fig = px.line(data, x="step", y="lr", title=scheduler_name)
     fig.update_yaxes(range=[0, None])
+    fig.update_xaxes(range=[0, STEPS])
     return fig
 
 
@@ -159,17 +171,6 @@ def show_config(  # noqa: PLR0912, C901, PLR0915
 
 def main() -> None:
     """Entrypoint for application."""
-    st.set_page_config(
-        page_title="LR Viz",
-        page_icon=":material/schedule:",
-        layout="wide",
-        menu_items={
-            "Report a bug": "https://www.github.com/siemdejong/lr-schedulers/issues",
-        },
-    )
-
-    st.title("Visualize Learning Rate Schedulers")
-
     torch_optim_lr_scheduler_members = sorted(
         inspect.getmembers(torch.optim.lr_scheduler, inspect.isclass),
         key=lambda x: x[0],
@@ -197,5 +198,4 @@ def main() -> None:
             st.divider()
 
 
-if __name__ == "__main__":
-    main()
+main()
