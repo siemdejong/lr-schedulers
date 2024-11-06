@@ -106,7 +106,7 @@ def show_config(
             if scheduler_name == "CosineAnnealingWarmRestarts" and parameter == "T_mult":
                 min_value = 1
             elif scheduler_name == "OneCycleLR" and parameter == "total_steps":
-                min_value = 0
+                min_value = STEPS
             else:
                 min_value = None
             selected_parameters[parameter] = column.number_input(
