@@ -8,7 +8,7 @@ dependencies = [
     "matplotlib>=3.9.2",
     "plotly>=5.24.1",
     "streamlit>=1.39.0",
-    "torch>=2.5.0",
+    "torch==2.5.0+cpu",
 ]
 
 [tool.uv]

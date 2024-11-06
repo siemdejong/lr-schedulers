@@ -335,7 +335,7 @@ requires-dist = [
     { name = "matplotlib", specifier = ">=3.9.2" },
     { name = "plotly", specifier = ">=5.24.1" },
     { name = "streamlit", specifier = ">=1.39.0" },
-    { name = "torch", specifier = ">=2.5.0", index = "https://download.pytorch.org/whl/cpu" },
+    { name = "torch", specifier = "==2.5.0+cpu", index = "https://download.pytorch.org/whl/cpu" },
 ]
 
 [package.metadata.requires-dev]

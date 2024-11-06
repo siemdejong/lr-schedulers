@@ -3,6 +3,7 @@
 import ast
 import itertools
 from collections.abc import Callable, Iterable
+from importlib.metadata import version
 from typing import Any
 
 import numpy as np
@@ -22,8 +23,16 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
+TORCH_VERSION = version("torch").removesuffix("+cpu")
 
 st.title("Visualize Learning Rate Schedulers")
+st.markdown(
+    "This application allows you to visualize the learning rate schedule of various "
+    "learning rate schedulers. The configuration options are based on the PyTorch "
+    f"{TORCH_VERSION} documentation. For more information, see the "
+    "[PyTorch documentation](https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate)."
+    " See the sidebar for general settings."
+)
 
 
 def show_lr_schedule(
@@ -52,6 +61,7 @@ with st.sidebar:
     st.markdown("# Configuration")
     STEPS = st.number_input("Number of steps", value=100, min_value=0, max_value=1000)
     LR = st.number_input("Learning rate given to optimizer", value=0.1)
+
 
 def calc_data(
     optimizer: torch.optim.Optimizer, scheduler: torch.optim.lr_scheduler.LRScheduler
@@ -103,7 +113,10 @@ def show_config(
     ):
         _type = type(parameters[parameter])
         if _type is int:
-            if scheduler_name == "CosineAnnealingWarmRestarts" and parameter == "T_mult":
+            if (
+                scheduler_name == "CosineAnnealingWarmRestarts"
+                and parameter == "T_mult"
+            ):
                 min_value = 1
             elif scheduler_name == "OneCycleLR" and parameter == "total_steps":
                 min_value = STEPS
@@ -125,11 +138,14 @@ def show_config(
                     key=scheduler_name + "_" + parameter,
                 )
             else:
-                if scheduler_name == "CosineAnnealingWarmRestarts" and parameter == "T_0":
-                    min_value = 0.
+                if (
+                    scheduler_name == "CosineAnnealingWarmRestarts"
+                    and parameter == "T_0"
+                ):
+                    min_value = 0.0
                 elif scheduler_name == "OneCycleLR" and parameter == "pct_start":
-                    min_value = 0.
-                    max_value = 1.
+                    min_value = 0.0
+                    max_value = 1.0
                 else:
                     min_value = None
                     max_value = None
@@ -240,6 +256,7 @@ def main() -> None:
         },
     }
     for lr_scheduler in torch_optim_lr_schedulers:
+        st.divider()
         st.fragment(
             show_lr_schedule(
                 lr_scheduler,
@@ -247,8 +264,6 @@ def main() -> None:
                 torch_optim_lr_schedulers[lr_scheduler],
             )
         )
-
-        st.divider()
 
 
 main()
