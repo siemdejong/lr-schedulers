@@ -103,19 +103,45 @@ def show_config(
     ):
         _type = type(parameters[parameter])
         if _type is int:
+            if scheduler_name == "CosineAnnealingWarmRestarts" and parameter == "T_mult":
+                min_value = 1
+            elif scheduler_name == "OneCycleLR" and parameter == "total_steps":
+                min_value = 0
+            else:
+                min_value = None
             selected_parameters[parameter] = column.number_input(
                 parameter,
                 value=parameters[parameter],
+                min_value=min_value,
                 key=scheduler_name + "_" + parameter,
             )
         elif _type is float:
-            selected_parameters[parameter] = column.number_input(
-                parameter,
-                value=parameters[parameter],
-                step=1e-5,
-                format="%.5f",
-                key=scheduler_name + "_" + parameter,
-            )
+            if scheduler_name in ["ConstantLR", "LinearLR"] and "factor" in parameter:
+                column.slider(
+                    parameter,
+                    min_value=0.0,
+                    max_value=1.0,
+                    value=parameters[parameter],
+                    key=scheduler_name + "_" + parameter,
+                )
+            else:
+                if scheduler_name == "CosineAnnealingWarmRestarts" and parameter == "T_0":
+                    min_value = 0.
+                elif scheduler_name == "OneCycleLR" and parameter == "pct_start":
+                    min_value = 0.
+                    max_value = 1.
+                else:
+                    min_value = None
+                    max_value = None
+                selected_parameters[parameter] = column.number_input(
+                    parameter,
+                    value=parameters[parameter],
+                    step=1e-5,
+                    min_value=min_value,
+                    max_value=max_value,
+                    format="%.5f",
+                    key=scheduler_name + "_" + parameter,
+                )
         elif _type is bool:
             selected_parameters[parameter] = column.checkbox(
                 parameter,
