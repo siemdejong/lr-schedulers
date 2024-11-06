@@ -1,11 +1,9 @@
 """Streamlit application to visualize learning rate schedulers."""
 
 import ast
-import inspect
-import typing
+import itertools
 from collections.abc import Callable, Iterable
-from collections.abc import Callable as TCallable
-from typing import _CallableGenericAlias, get_args, get_origin
+from typing import Any
 
 import numpy as np
 import plotly.express as px
@@ -21,31 +19,51 @@ st.set_page_config(
     menu_items={
         "Report a bug": "https://www.github.com/siemdejong/lr-schedulers/issues",
     },
+    initial_sidebar_state="collapsed",
 )
 
 
 st.title("Visualize Learning Rate Schedulers")
 
-left, right = st.columns([0.5, 0.5])
-with left:
+
+def show_lr_schedule(
+    scheduler_name: str,
+    scheduler_cls: torch.optim.lr_scheduler.LRScheduler,
+    parameters: dict[str, Any],
+) -> None:
+    """Show the lr scheduler and the configuration.
+
+    Paramters
+    ---------
+    scheduler_name : str
+        The name of the scheduler.
+    scheduler_cls : torch.optim.lr_scheduler.LRScheduler
+        The scheduler class.
+    """
+    plot_col, config_col = st.columns([0.6, 0.4])
+    selected_parameters = show_config(scheduler_name, parameters, config_col)
+
+    with plot_col:
+        fig = plot_schedule(scheduler_name, scheduler_cls, selected_parameters)
+        st.plotly_chart(fig)
+
+
+with st.sidebar:
+    st.markdown("# Configuration")
     STEPS = st.number_input("Number of steps", value=100, min_value=0, max_value=1000)
-with right:
-    LR = st.number_input("Learning rate", value=0.1)
-st.divider()
+    LR = st.number_input("Learning rate given to optimizer", value=0.1)
 
-DEFAULTS = {
-    "CosineAnnealingLR": {"T_max": STEPS},
-    "CosineAnnealingWarmRestarts": {"T_0": STEPS // 5},
-    "CyclicLR": {"base_lr": 0.001, "max_lr": 0.1, "step_size_up": STEPS // 5},
-    "ExponentialLR": {"gamma": 0.95},
-    "LambdaLR": {"lr_lambda": "lambda x: 0.95 ** x"},
-    "MultiStepLR": {"milestones": [STEPS // 3, 2 * STEPS // 3], "gamma": 0.1},
-    "MultiplicativeLR": {"lr_lambda": "lambda x: 0.95"},
-    "OneCycleLR": {"max_lr": 0.1},
-    "StepLR": {"step_size": STEPS // 3},
-}
-
-Callable = Callable | TCallable | _CallableGenericAlias
+def calc_data(
+    optimizer: torch.optim.Optimizer, scheduler: torch.optim.lr_scheduler.LRScheduler
+) -> dict:
+    """Calculate the learning rate schedule."""
+    data = {"step": np.zeros(STEPS), "lr": np.zeros(STEPS)}
+    for step in range(STEPS):
+        optimizer.step()
+        data["step"][step] = step
+        data["lr"][step] = scheduler.get_last_lr()[0]
+        scheduler.step()
+    return data
 
 
 @st.cache_data
@@ -56,151 +74,154 @@ def plot_schedule(
 ) -> go.Figure:
     """Plot the learning rate schedule for a given scheduler."""
     optimizer = SGD([torch.tensor(1)], lr=LR)
-    # Use a scheduler of your choice below.
-    # Great for debugging your own schedulers!
-    if inspect.signature(scheduler_cls).parameters.get("total_iters"):
-        total_iters_scheduler_kwargs = {"total_iters": STEPS}
-    elif inspect.signature(scheduler_cls).parameters.get("total_steps"):
-        total_iters_scheduler_kwargs = {"total_steps": STEPS}
-    else:
-        total_iters_scheduler_kwargs = {}
 
-    defaults = parameters | DEFAULTS.get(scheduler_name, {})
-
-    # Convert lambdas strings to functions
-    for parameter in defaults:
-        if "lambda" in str(defaults[parameter]):
-            defaults[parameter] = eval(defaults[parameter])  # noqa: S307
-
-    scheduler_kwargs = defaults | total_iters_scheduler_kwargs
-    scheduler = scheduler_cls(optimizer, **scheduler_kwargs)
-
-    data = {"step": np.zeros(STEPS), "lr": np.zeros(STEPS)}
-    for step in range(STEPS):
-        optimizer.step()
-        data["step"][step] = step
-        data["lr"][step] = scheduler.get_last_lr()[0]
-        scheduler.step()
-
-    fig = px.line(data, x="step", y="lr", title=scheduler_name)
-    fig.update_yaxes(range=[0, None])
-    fig.update_xaxes(range=[0, STEPS])
+    try:
+        scheduler = scheduler_cls(optimizer, **parameters)
+        data = calc_data(optimizer, scheduler)
+    except ValueError as e:
+        st.error(e)
+        data = {"step": [], "lr": []}
+    finally:
+        fig = px.line(data, x="step", y="lr", title=scheduler_name)
+        fig.update_yaxes(range=[0, None])
+        fig.update_xaxes(range=[0, STEPS])
     return fig
 
 
-def show_config(  # noqa: PLR0912, C901, PLR0915
+def show_config(
     scheduler_name: str,
-    scheduler_cls: torch.optim.lr_scheduler.LRScheduler,
+    parameters: dict[str, Any],
     st_container: st.container = st.container,
 ) -> int | float | bool | Iterable | Callable | str:
     """Show configuration options for a given scheduler."""
-    signature = inspect.signature(scheduler_cls)
-    selected_inputs = {}
+    selected_parameters = {}
 
     left_column, _, right_column = st_container.columns([0.48, 0.04, 0.48])
 
-    for col_idx, parameter_name in enumerate(signature.parameters):
-        if parameter_name in ["optimizer", "last_epoch", "verbose", "total_iters"]:
-            continue
+    for parameter, column in zip(
+        parameters, itertools.cycle([left_column, right_column])
+    ):
+        _type = type(parameters[parameter])
+        if _type is int:
+            selected_parameters[parameter] = column.number_input(
+                parameter,
+                value=parameters[parameter],
+                key=scheduler_name + "_" + parameter,
+            )
+        elif _type is float:
+            selected_parameters[parameter] = column.number_input(
+                parameter,
+                value=parameters[parameter],
+                step=1e-5,
+                format="%.5f",
+                key=scheduler_name + "_" + parameter,
+            )
+        elif _type is bool:
+            selected_parameters[parameter] = column.checkbox(
+                parameter,
+                value=parameters[parameter],
+                key=scheduler_name + "_" + parameter,
+            )
+        elif _type is tuple:
+            options: list[Any] = parameters[parameter][1]
+            default_idx = options.index(parameters[parameter][0])
+            selected_parameters[parameter] = column.radio(
+                parameter,
+                options=options,
+                index=default_idx,
+                key=scheduler_name + "_" + parameter,
+            )
+        elif _type is list:
+            selected_parameters[parameter] = ast.literal_eval(
+                column.text_input(
+                    parameter,
+                    parameters[parameter],
+                    key=scheduler_name + "_" + parameter,
+                )
+            )
 
-        parameter = signature.parameters[parameter_name]
-        annotation = parameter.annotation
-        default = None
-        if annotation is inspect.Signature.empty:
-            annotation = type(parameter.default)
-            default = parameter.default
-        elif get_origin(annotation) == typing.Union:
-            annotation = get_args(parameter.annotation)[0]
-            default = parameter.default
-        elif get_origin(annotation) is typing.Literal:
-            annotation = get_args(parameter.annotation)
-            default = parameter.default
-        elif get_origin(annotation) is bool:
-            annotation = bool
-            default = parameter.default
-        elif get_origin(annotation) is Iterable:
-            annotation = Iterable
-            default = parameter.default
-        elif annotation is int:
-            annotation = int
-            default = parameter.default
-        elif annotation is float:
-            annotation = float
-            default = parameter.default
-        elif annotation is Callable or type(annotation) is _CallableGenericAlias:
-            annotation = Callable
-            default = parameter.default
-
-        if default in [inspect.Signature.empty, None]:
-            defaults = DEFAULTS.get(scheduler_name)
-            default = defaults.get(str(parameter.name)) if defaults else None
-        with left_column if col_idx % 2 == 0 else right_column:
-            if annotation in (int, float):
-                selected_input = st.slider(
-                    f"{parameter_name}",
-                    value=default,
-                    key=f"{scheduler_name}-{parameter_name}",
-                )
-            elif type(annotation) is tuple:
-                selected_input = st.radio(
-                    f"{parameter_name}",
-                    options=annotation,
-                    index=annotation.index(default),
-                    key=f"{scheduler_name}-{parameter_name}",
-                )
-            elif annotation is bool:
-                selected_input = st.toggle(
-                    f"{parameter_name}",
-                    value=default,
-                    key=f"{scheduler_name}-{parameter_name}",
-                )
-            elif annotation is Iterable:
-                selected_input = st.text_input(
-                    f"{parameter_name}",
-                    key=f"{scheduler_name}-{parameter_name}",
-                    value=default,
-                )
-                selected_input = ast.literal_eval(selected_input)
-            elif annotation is Callable or type(annotation) is _CallableGenericAlias:
-                selected_input = st.text_input(f"{parameter_name}", value=default)
-            else:
-                selected_input = st.text_input(
-                    f"{parameter_name} (not recognized)",
-                    disabled=True,
-                    value=default,
-                )
-        selected_inputs[parameter_name] = selected_input
-
-    return selected_inputs
+    return selected_parameters
 
 
 def main() -> None:
     """Entrypoint for application."""
-    torch_optim_lr_scheduler_members = sorted(
-        inspect.getmembers(torch.optim.lr_scheduler, inspect.isclass),
-        key=lambda x: x[0],
-    )
-    for member_name, member_cls in torch_optim_lr_scheduler_members:
-        if issubclass(
-            member_cls,
-            torch.optim.lr_scheduler.LRScheduler,
-        ) and member_name not in [
-            "_LRScheduler",
-            "LRScheduler",
-            "ChainedScheduler",
-            "SequentialLR",
-            "ReduceLROnPlateau",
-        ]:
-            plot_col, config_col = st.columns([0.6, 0.4])
+    torch_optim_lr_schedulers = {
+        "ConstantLR": {
+            "cls": torch.optim.lr_scheduler.ConstantLR,
+            "factor": 0.33,
+            "total_iters": STEPS // 2,
+        },
+        "CosineAnnealingLR": {
+            "cls": torch.optim.lr_scheduler.CosineAnnealingLR,
+            "T_max": STEPS,
+            "eta_min": 0.0,
+        },
+        "CosineAnnealingWarmRestarts": {
+            "cls": torch.optim.lr_scheduler.CosineAnnealingWarmRestarts,
+            "T_0": 20,
+            "T_mult": 1,
+            "eta_min": 0.0,
+        },
+        "CyclicLR": {
+            "cls": torch.optim.lr_scheduler.CyclicLR,
+            "base_lr": 0,
+            "max_lr": 0.1,
+            "step_size_up": 10,
+            "mode": ("triangular", ("triangular", "triangular2", "exp_range")),
+            "gamma": 0.95,
+            # TODO(siemdejong): Allow for custom functions.
+            # https://github.com/siemdejong/lr-schedulers/issues/1
+            # TODO(siemdejong): Allow for momentum scheduling.
+            # https://github.com/siemdejong/lr-schedulers/issues/2
+        },
+        "ExponentialLR": {
+            "cls": torch.optim.lr_scheduler.ExponentialLR,
+            "gamma": 0.95,
+        },
+        # TODO(siemdejong): implement LambdaLR
+        # https://github.com/siemdejong/lr-schedulers/issues/1
+        "LinearLR": {
+            "cls": torch.optim.lr_scheduler.LinearLR,
+            "start_factor": 0.33,
+            "end_factor": 1.0,
+            "total_iters": STEPS // 2,
+        },
+        "MultiStepLR": {
+            "cls": torch.optim.lr_scheduler.MultiStepLR,
+            "milestones": [33, 66],
+            "gamma": 0.1,
+        },
+        # TODO(siemdejong): implement MultiplicativeLR
+        # https://github.com/siemdejong/lr-schedulers/issues/1
+        "OneCycleLR": {
+            "cls": torch.optim.lr_scheduler.OneCycleLR,
+            "total_steps": STEPS,
+            "max_lr": 0.1,
+            "pct_start": 0.3,
+            "anneal_strategy": ("cos", ("cos", "linear")),
+            "div_factor": 25.0,
+            "final_div_factor": 10000.0,
+        },
+        "PolynomialLR": {
+            "cls": torch.optim.lr_scheduler.PolynomialLR,
+            "power": 1,
+        },
+        "StepLR": {
+            "cls": torch.optim.lr_scheduler.StepLR,
+            "step_size": 33,
+            "gamma": 0.1,
+        },
+    }
+    for lr_scheduler in torch_optim_lr_schedulers:
+        st.fragment(
+            show_lr_schedule(
+                lr_scheduler,
+                torch_optim_lr_schedulers[lr_scheduler].pop("cls"),
+                torch_optim_lr_schedulers[lr_scheduler],
+            )
+        )
 
-            parameters = show_config(member_name, member_cls, config_col)
-
-            with plot_col:
-                fig = plot_schedule(member_name, member_cls, parameters)
-                fig.update()
-                st.plotly_chart(fig)
-
-            st.divider()
+        st.divider()
 
 
 main()
