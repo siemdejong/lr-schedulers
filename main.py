@@ -230,6 +230,7 @@ def main() -> None:
         },
         "PolynomialLR": {
             "cls": torch.optim.lr_scheduler.PolynomialLR,
+            "total_iters": STEPS,
             "power": 1,
         },
         "StepLR": {
