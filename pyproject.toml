@@ -26,4 +26,4 @@ explicit = true
 
 [tool.ruff.lint]
 select = ["ALL"]
-extend-ignore = ["D203", "D213", "COM812", "ISC001"]
+extend-ignore = ["D203", "D213", "COM812", "ISC001", "FIX002"]
