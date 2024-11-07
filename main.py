@@ -130,7 +130,7 @@ def show_config(
             )
         elif _type is float:
             if scheduler_name in ["ConstantLR", "LinearLR"] and "factor" in parameter:
-                column.slider(
+                selected_parameters[parameter] = column.slider(
                     parameter,
                     min_value=0.0,
                     max_value=1.0,
