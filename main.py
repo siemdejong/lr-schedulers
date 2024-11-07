@@ -102,6 +102,25 @@ def plot_schedule(
         )
     return fig
 
+def check_lambda_for_safety(lambda_str: str) -> str:
+    """Sanitize the lambda string."""
+    if not lambda_str.startswith("lambda x:"):
+        raise ValueError("Lambda function should start with 'lambda x:'.")
+    allowed_chars = "x.,*/-+0123456789() "
+    allowed_functions = {"x", "min", "max", "abs"}
+    lambda_body = lambda_str.replace("lambda x:", "").strip()
+
+    # Check for invalid characters
+    if not all(char in allowed_chars for char in lambda_body if char.isalnum() or char in allowed_chars):
+        raise ValueError(f"Lambda function ({lambda_body}) contains invalid characters. Please only use 'x', '/', '*', '-', '+', '0-9', spaces, and allowed words.")
+
+    # Check for allowed words
+    tokens = lambda_body.split()
+    for token in tokens:
+        if token.isalpha() and token not in allowed_functions:
+            raise ValueError(f"Lambda function contains invalid word '{token}'. Allowed words are {allowed_functions}.")
+
+    return lambda_str
 
 def show_config(
     scheduler_name: str,
@@ -186,6 +205,22 @@ def show_config(
                     key=scheduler_name + "_" + parameter,
                 )
             )
+        elif _type is str and parameters[parameter].startswith("lambda"):
+            try:
+                eval_str = check_lambda_for_safety(
+                    column.text_input(
+                        parameter,
+                        parameters[parameter],
+                        key=scheduler_name + "_" + parameter,
+                    )
+                )
+            except ValueError as e:
+                column.error(e)
+                selected_parameters[parameter] = eval(parameters[parameter])
+            else:
+                selected_parameters[parameter] = eval(  # noqa: S307
+                    eval_str
+                )
 
     return selected_parameters
 
@@ -225,8 +260,10 @@ def main() -> None:
             "cls": torch.optim.lr_scheduler.ExponentialLR,
             "gamma": 0.95,
         },
-        # TODO(siemdejong): implement LambdaLR
-        # https://github.com/siemdejong/lr-schedulers/issues/1
+        "LambdaLR": {
+            "cls": torch.optim.lr_scheduler.LambdaLR,
+            "lr_lambda": f"lambda x: {(LR ** (1/50)):.2f} ** x",
+        },
         "LinearLR": {
             "cls": torch.optim.lr_scheduler.LinearLR,
             "start_factor": 0.33,
@@ -238,8 +275,10 @@ def main() -> None:
             "milestones": [33, 66],
             "gamma": 0.1,
         },
-        # TODO(siemdejong): implement MultiplicativeLR
-        # https://github.com/siemdejong/lr-schedulers/issues/1
+        "MultiplicativeLR": {
+            "cls": torch.optim.lr_scheduler.MultiplicativeLR,
+            "lr_lambda": f"lambda x: {(LR ** (1/50)):.2f}",
+        },
         "OneCycleLR": {
             "cls": torch.optim.lr_scheduler.OneCycleLR,
             "total_steps": STEPS,
