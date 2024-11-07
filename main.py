@@ -61,6 +61,7 @@ with st.sidebar:
     st.markdown("# Configuration")
     STEPS = st.number_input("Number of steps", value=100, min_value=0, max_value=1000)
     LR = st.number_input("Learning rate given to optimizer", value=0.1)
+    PLOT_MAX_LR = st.number_input("Maximum learning rate for plot", value=LR)
 
 
 def calc_data(
@@ -76,7 +77,6 @@ def calc_data(
     return data
 
 
-@st.cache_data
 def plot_schedule(
     scheduler_name: str,
     scheduler_cls: torch.optim.lr_scheduler.LRScheduler,
@@ -92,9 +92,14 @@ def plot_schedule(
         st.error(e)
         data = {"step": [], "lr": []}
     finally:
-        fig = px.line(data, x="step", y="lr", title=scheduler_name)
-        fig.update_yaxes(range=[0, None])
-        fig.update_xaxes(range=[0, STEPS])
+        fig = px.line(
+            data,
+            x="step",
+            y="lr",
+            title=scheduler_name,
+            range_x=[0, STEPS],
+            range_y=[0, PLOT_MAX_LR],
+        )
     return fig
 
 
