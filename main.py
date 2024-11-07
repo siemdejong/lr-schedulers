@@ -262,7 +262,7 @@ def main() -> None:
         },
         "LambdaLR": {
             "cls": torch.optim.lr_scheduler.LambdaLR,
-            "lr_lambda": f"lambda x: {(LR ** (1/50)):.2f} ** x",
+            "lr_lambda": "lambda x: 0.95 ** x",
         },
         "LinearLR": {
             "cls": torch.optim.lr_scheduler.LinearLR,
@@ -277,7 +277,7 @@ def main() -> None:
         },
         "MultiplicativeLR": {
             "cls": torch.optim.lr_scheduler.MultiplicativeLR,
-            "lr_lambda": f"lambda x: {(LR ** (1/50)):.2f}",
+            "lr_lambda": "lambda x: 0.95",
         },
         "OneCycleLR": {
             "cls": torch.optim.lr_scheduler.OneCycleLR,
