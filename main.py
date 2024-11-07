@@ -105,8 +105,9 @@ def plot_schedule(
 
 def check_lambda_for_safety(lambda_str: str) -> str:
     """Sanitize the lambda string."""
-    if not lambda_str.startswith("lambda x:") and not lambda_str == "None":
-        raise ValueError("Lambda function should start with 'lambda x:'.")
+    if not lambda_str.startswith("lambda x:") and lambda_str != "None":
+        error_msg = "Lambda function should start with 'lambda x:'."
+        raise ValueError(error_msg)
     allowed_chars = "x.,*/-+0123456789() "
     allowed_functions = {"x", "min", "max", "abs"}
     lambda_body = lambda_str.replace("lambda x:", "").replace("None", "").strip()
@@ -117,17 +118,21 @@ def check_lambda_for_safety(lambda_str: str) -> str:
         for char in lambda_body
         if char.isalnum() or char in allowed_chars
     ):
-        raise ValueError(
-            f"Lambda function ({lambda_body}) contains invalid characters. Please only use 'x', '/', '*', '-', '+', '0-9', spaces, and allowed words."
+        error_msg = (
+            f"Lambda function ({lambda_body}) contains invalid characters. "
+            "Please only use 'x', '/', '*', '-', '+', '0-9', spaces, and allowed words."
         )
+        raise ValueError(error_msg)
 
     # Check for allowed words
     tokens = lambda_body.split()
     for token in tokens:
         if token.isalpha() and token not in allowed_functions:
-            raise ValueError(
-                f"Lambda function contains invalid word '{token}'. Allowed words are {allowed_functions}."
+            error_msg = (
+                f"Lambda function contains invalid word '{token}'. "
+                f"Allowed words are {allowed_functions}."
             )
+            raise ValueError(error_msg)
 
     return lambda_str
 
@@ -232,7 +237,7 @@ def show_config(
                 )
             except ValueError as e:
                 column.error(e)
-                selected_parameters[parameter] = eval(parameters[parameter])
+                selected_parameters[parameter] = eval(parameters[parameter])  # noqa: S307, default is safe.
             else:
                 selected_parameters[parameter] = eval(  # noqa: S307
                     eval_str
