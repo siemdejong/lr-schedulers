@@ -102,25 +102,35 @@ def plot_schedule(
         )
     return fig
 
+
 def check_lambda_for_safety(lambda_str: str) -> str:
     """Sanitize the lambda string."""
-    if not lambda_str.startswith("lambda x:"):
+    if not lambda_str.startswith("lambda x:") and not lambda_str == "None":
         raise ValueError("Lambda function should start with 'lambda x:'.")
     allowed_chars = "x.,*/-+0123456789() "
     allowed_functions = {"x", "min", "max", "abs"}
-    lambda_body = lambda_str.replace("lambda x:", "").strip()
+    lambda_body = lambda_str.replace("lambda x:", "").replace("None", "").strip()
 
     # Check for invalid characters
-    if not all(char in allowed_chars for char in lambda_body if char.isalnum() or char in allowed_chars):
-        raise ValueError(f"Lambda function ({lambda_body}) contains invalid characters. Please only use 'x', '/', '*', '-', '+', '0-9', spaces, and allowed words.")
+    if not all(
+        char in allowed_chars
+        for char in lambda_body
+        if char.isalnum() or char in allowed_chars
+    ):
+        raise ValueError(
+            f"Lambda function ({lambda_body}) contains invalid characters. Please only use 'x', '/', '*', '-', '+', '0-9', spaces, and allowed words."
+        )
 
     # Check for allowed words
     tokens = lambda_body.split()
     for token in tokens:
         if token.isalpha() and token not in allowed_functions:
-            raise ValueError(f"Lambda function contains invalid word '{token}'. Allowed words are {allowed_functions}.")
+            raise ValueError(
+                f"Lambda function contains invalid word '{token}'. Allowed words are {allowed_functions}."
+            )
 
     return lambda_str
+
 
 def show_config(
     scheduler_name: str,
@@ -205,7 +215,13 @@ def show_config(
                     key=scheduler_name + "_" + parameter,
                 )
             )
-        elif _type is str and parameters[parameter].startswith("lambda"):
+        elif _type is str and (
+            parameters[parameter].startswith("lambda")
+            or (
+                parameters[parameter].startswith("None")
+                and scheduler_name == "CyclicLR"
+            )
+        ):
             try:
                 eval_str = check_lambda_for_safety(
                     column.text_input(
@@ -251,6 +267,8 @@ def main() -> None:
             "step_size_up": 10,
             "mode": ("triangular", ("triangular", "triangular2", "exp_range")),
             "gamma": 0.95,
+            "scale_fn": "None",
+            "scale_mode": ("cycle", ("cycle", "iterations")),
             # TODO(siemdejong): Allow for custom functions.
             # https://github.com/siemdejong/lr-schedulers/issues/1
             # TODO(siemdejong): Allow for momentum scheduling.
