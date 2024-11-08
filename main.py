@@ -35,6 +35,34 @@ st.markdown(
 )
 
 
+def construct_scheduler_str(
+    scheduler_cls: torch.optim.lr_scheduler.LRScheduler, parameters: dict[str, Any]
+) -> str:
+    """Construct a scheduler string for the given scheduler and parameters.
+
+    Useful for showing the code block in the application.
+    """
+    scheduler_str = (
+        "scheduler = "
+        f"{scheduler_cls.__module__}.{scheduler_cls.__name__}(\n"
+        "    optimizer=optimizer,\n"
+    )
+    for parameter in parameters:
+        scheduler_str += f"    {parameter}={parameters[parameter]},\n"
+    scheduler_str += ")"
+    return scheduler_str
+
+
+def construct_code_block(
+    scheduler_cls: torch.optim.lr_scheduler.LRScheduler, parameters: dict[str, Any]
+) -> str:
+    """Construct a code block for the given scheduler and parameters."""
+    model_str = "model = torch.nn.Linear(1, 1)"
+    optimizer_str = f"optimizer = torch.optim.SGD(model.parameters(), lr={LR})"
+    scheduler_str = construct_scheduler_str(scheduler_cls, parameters)
+    return f"{model_str}\n{optimizer_str}\n{scheduler_str}"
+
+
 def show_lr_schedule(
     scheduler_name: str,
     scheduler_cls: torch.optim.lr_scheduler.LRScheduler,
@@ -52,9 +80,12 @@ def show_lr_schedule(
     plot_col, config_col = st.columns([0.6, 0.4])
     selected_parameters = show_config(scheduler_name, parameters, config_col)
 
-    with plot_col:
-        fig = plot_schedule(scheduler_name, scheduler_cls, selected_parameters)
-        st.plotly_chart(fig)
+    fig = plot_schedule(scheduler_name, scheduler_cls, selected_parameters)
+    plot_col.plotly_chart(fig)
+
+    with config_col.popover("Show code"):
+        code_block = construct_code_block(scheduler_cls, selected_parameters)
+        st.code(code_block)
 
 
 with st.sidebar:
