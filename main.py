@@ -7,6 +7,7 @@ from importlib.metadata import version
 from typing import Any
 
 import numpy as np
+import pandas as pd
 import plotly.express as px
 import plotly.graph_objects as go
 import streamlit as st
@@ -23,13 +24,12 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-TORCH_VERSION = version("torch").removesuffix("+cpu")
-
 st.title("Visualize Learning Rate Schedulers")
 st.markdown(
     "This application allows you to visualize the learning rate schedule of various "
     "learning rate schedulers. The configuration options are based on the PyTorch "
-    f"{TORCH_VERSION} documentation. For more information, see the "
+    f"{version("torch").removesuffix("+cpu")} documentation. "
+    "For more information, see the "
     "[PyTorch documentation](https://pytorch.org/docs/stable/optim.html#how-to-adjust-learning-rate)."
     " See the sidebar for general settings."
 )
@@ -63,10 +63,62 @@ def construct_code_block(
     return f"{model_str}\n{optimizer_str}\n{scheduler_str}"
 
 
+def add_to_schedule_bank(
+    data: pd.DataFrame, schedule_bank: pd.DataFrame
+) -> pd.DataFrame:
+    """Update the schedule bank with the new data."""
+    # If data is a subset, don't update
+    if len(data.merge(schedule_bank)) == len(data):
+        return schedule_bank
+
+    # Update schedule bank.
+    current_scheduler_idx = (
+        0 if len(schedule_bank) == 0 else schedule_bank["scheduler_idx"].max() + 1
+    )
+    data["scheduler_idx"] = current_scheduler_idx
+    return pd.concat([schedule_bank, data], ignore_index=True)
+
+
+def clear_schedule_bank_for_scheduler(
+    scheduler_name: str, schedule_bank: pd.DataFrame
+) -> pd.DataFrame:
+    """Clear the schedule bank for a given scheduler."""
+    max_idx = schedule_bank[schedule_bank["scheduler_name"] == scheduler_name][
+        "scheduler_idx"
+    ].max()
+    scheduler_name_condition = schedule_bank["scheduler_name"] == scheduler_name
+    scheduler_idx_condition = schedule_bank["scheduler_idx"] == max_idx
+    schedule_bank = schedule_bank[scheduler_name_condition & scheduler_idx_condition]
+    schedule_bank["scheduler_idx"] = 0
+    return schedule_bank
+
+
+def update_schedule_bank_session_state(schedule_bank: pd.DataFrame) -> None:
+    """Update the schedule bank session state."""
+    st.session_state["schedule_bank"] = schedule_bank
+
+
+def show_schedule_bank_configs(
+    scheduler_name: str, schedule_bank: pd.DataFrame
+) -> None:
+    """Show the configurations of the selected scheduler."""
+    # We are only interested in the selected scheduler.
+    data = schedule_bank[schedule_bank["scheduler_name"] == scheduler_name]
+
+    # We don't need to display anything else than the parameters
+    with st.popover("Show comparison parameters", icon=":material/compare_arrows:"):
+        st.write(
+            data[["scheduler_idx", "parameters"]]
+            .drop_duplicates()
+            .set_index("scheduler_idx")
+        )
+
+
 def show_lr_schedule(
     scheduler_name: str,
     scheduler_cls: torch.optim.lr_scheduler.LRScheduler,
     parameters: dict[str, Any],
+    schedule_bank: pd.DataFrame,
 ) -> None:
     """Show the lr scheduler and the configuration.
 
@@ -78,14 +130,36 @@ def show_lr_schedule(
         The scheduler class.
     """
     plot_col, config_col = st.columns([0.6, 0.4])
-    selected_parameters = show_config(scheduler_name, parameters, config_col)
 
-    fig = plot_schedule(scheduler_name, scheduler_cls, selected_parameters)
+    with config_col:
+        selected_parameters = show_config_inputs(scheduler_name, parameters)
+
+    data = calc_data(scheduler_cls, selected_parameters)
+    schedule_bank = add_to_schedule_bank(data, schedule_bank)
+    update_session_state = config_col.button(
+        "Save",
+        key="add_to_schedule_bank" + scheduler_name,
+        icon=":material/bookmark:",
+    )
+    if update_session_state:
+        update_schedule_bank_session_state(schedule_bank)
+    clear_schedules = config_col.button(
+        "Clear",
+        key="clear_schedule_bank" + scheduler_name,
+        icon=":material/delete_forever:",
+    )
+    if clear_schedules:
+        schedule_bank = clear_schedule_bank_for_scheduler(scheduler_name, schedule_bank)
+        update_schedule_bank_session_state(schedule_bank)
+    fig = plot_schedules(schedule_bank=schedule_bank, filter_scheduler=scheduler_name)
     plot_col.plotly_chart(fig)
 
-    with config_col.popover("Show code"):
+    with config_col.popover("Show code", icon=":material/code:"):
         code_block = construct_code_block(scheduler_cls, selected_parameters)
         st.code(code_block)
+
+    with config_col:
+        show_schedule_bank_configs(scheduler_name, schedule_bank)
 
 
 with st.sidebar:
@@ -96,42 +170,48 @@ with st.sidebar:
 
 
 def calc_data(
-    optimizer: torch.optim.Optimizer, scheduler: torch.optim.lr_scheduler.LRScheduler
+    scheduler_cls: torch.optim.lr_scheduler.LRScheduler,
+    parameters: dict[str, Any],
 ) -> dict:
     """Calculate the learning rate schedule."""
+    optimizer = SGD([torch.tensor(1)], lr=LR)
+    scheduler = scheduler_cls(optimizer, **parameters)
     data = {"step": np.zeros(STEPS), "lr": np.zeros(STEPS)}
+
     for step in range(STEPS):
         optimizer.step()
         data["step"][step] = step
         data["lr"][step] = scheduler.get_last_lr()[0]
         scheduler.step()
-    return data
+
+    return pd.DataFrame(
+        {
+            "scheduler_name": scheduler_cls.__name__,
+            "lr": data["lr"],
+            "step": data["step"],
+            "parameters": str(parameters),
+        }
+    )
 
 
-def plot_schedule(
-    scheduler_name: str,
-    scheduler_cls: torch.optim.lr_scheduler.LRScheduler,
-    parameters: dict,
+def plot_schedules(
+    schedule_bank: pd.DataFrame,
+    filter_scheduler: str | None = None,
 ) -> go.Figure:
     """Plot the learning rate schedule for a given scheduler."""
-    optimizer = SGD([torch.tensor(1)], lr=LR)
-
-    try:
-        scheduler = scheduler_cls(optimizer, **parameters)
-        data = calc_data(optimizer, scheduler)
-    except ValueError as e:
-        st.error(e)
-        data = {"step": [], "lr": []}
-    finally:
-        fig = px.line(
-            data,
-            x="step",
-            y="lr",
-            title=scheduler_name,
-            range_x=[0, STEPS],
-            range_y=[0, PLOT_MAX_LR],
-        )
-    return fig
+    if filter_scheduler is not None:
+        schedule_bank = schedule_bank[
+            schedule_bank["scheduler_name"] == filter_scheduler
+        ]
+    return px.line(
+        schedule_bank,
+        x="step",
+        y="lr",
+        color="scheduler_idx",
+        title=filter_scheduler if filter_scheduler is not None else "All schedulers",
+        range_x=[0, STEPS],
+        range_y=[0, PLOT_MAX_LR],
+    )
 
 
 def check_lambda_for_safety(lambda_str: str) -> str:
@@ -168,15 +248,14 @@ def check_lambda_for_safety(lambda_str: str) -> str:
     return lambda_str
 
 
-def show_config(
+def show_config_inputs(
     scheduler_name: str,
     parameters: dict[str, Any],
-    st_container: st.container = st.container,
 ) -> int | float | bool | Iterable | Callable | str:
     """Show configuration options for a given scheduler."""
     selected_parameters = {}
 
-    left_column, _, right_column = st_container.columns([0.48, 0.04, 0.48])
+    left_column, _, right_column = st.columns([0.48, 0.04, 0.48])
 
     for parameter, column in zip(
         parameters, itertools.cycle([left_column, right_column])
@@ -202,7 +281,7 @@ def show_config(
             if scheduler_name in ["ConstantLR", "LinearLR"] and "factor" in parameter:
                 selected_parameters[parameter] = column.slider(
                     parameter,
-                    min_value=0.0,
+                    min_value=1e-9,
                     max_value=1.0,
                     value=parameters[parameter],
                     key=scheduler_name + "_" + parameter,
@@ -353,6 +432,13 @@ def main() -> None:
             "gamma": 0.1,
         },
     }
+
+    if "schedule_bank" not in st.session_state:
+        st.session_state["schedule_bank"] = pd.DataFrame(
+            columns=["scheduler_name", "lr", "step", "parameters", "scheduler_idx"]
+        )
+    schedule_bank = st.session_state["schedule_bank"]
+
     for lr_scheduler in torch_optim_lr_schedulers:
         st.divider()
         st.fragment(
@@ -360,8 +446,10 @@ def main() -> None:
                 lr_scheduler,
                 torch_optim_lr_schedulers[lr_scheduler].pop("cls"),
                 torch_optim_lr_schedulers[lr_scheduler],
+                schedule_bank=schedule_bank,
             )
         )
 
 
-main()
+if __name__ == "__main__":
+    main()
